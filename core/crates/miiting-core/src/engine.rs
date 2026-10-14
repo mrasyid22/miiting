@@ -441,8 +441,10 @@ mod tests {
                 [v, v]
             })
             .collect();
+        let mic_at = std::time::Instant::now();
         session.push_audio(Source::Mic, &tone, 48_000, 2);
         std::thread::sleep(std::time::Duration::from_millis(300));
+        let gap_ms = mic_at.elapsed().as_millis() as i64;
         session.push_audio(Source::System, &tone, 48_000, 2);
         engine.finish_session(&session, false, false).unwrap();
 
@@ -453,9 +455,11 @@ mod tests {
         let mic = read_wav_16k_mono(&engine.meeting_dir(&id).join("mic.wav")).unwrap();
         let sys = read_wav_16k_mono(&engine.meeting_dir(&id).join("system.wav")).unwrap();
         assert!((mic.len() as i64 - 16_000).abs() < 100, "mic {}", mic.len());
-        // System started ~300 ms later and was padded with that much silence.
+        // System started `gap_ms` later (at least the 300 ms sleep, more on a slow machine)
+        // and was padded with that much silence.
         let pad = sys.len() as i64 - mic.len() as i64;
-        assert!((4_000..7_000).contains(&pad), "pad {pad}");
+        let expected = gap_ms * crate::STT_SAMPLE_RATE as i64 / 1000;
+        assert!((pad - expected).abs() < 800, "pad {pad}, expected ~{expected}");
 
         let md = engine.export_markdown(&id).unwrap();
         assert!(md.contains("## Transcript"));
