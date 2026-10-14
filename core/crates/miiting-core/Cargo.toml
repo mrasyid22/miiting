@@ -1,0 +1,20 @@
+[package]
+name = "miiting-core"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[dependencies]
+whisper-rs.workspace = true
+rusqlite.workspace = true
+hound.workspace = true
+reqwest.workspace = true
+serde.workspace = true
+serde_json.workspace = true
+thiserror.workspace = true
+uuid.workspace = true
+crossbeam-channel.workspace = true
+parking_lot.workspace = true
+chrono.workspace = true
+log.workspace = true
+libc = "0.2"

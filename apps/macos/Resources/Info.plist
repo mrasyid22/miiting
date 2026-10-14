@@ -1,0 +1,52 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>CFBundleName</key>
+	<string>Miiting</string>
+	<key>CFBundleDisplayName</key>
+	<string>Miiting</string>
+	<key>CFBundleIdentifier</key>
+	<string>app.miiting.mac</string>
+	<key>CFBundleExecutable</key>
+	<string>Miiting</string>
+	<key>CFBundlePackageType</key>
+	<string>APPL</string>
+	<key>CFBundleShortVersionString</key>
+	<string>0.1.0</string>
+	<key>CFBundleVersion</key>
+	<string>1</string>
+	<key>CFBundleIconFile</key>
+	<string>AppIcon</string>
+	<key>CFBundleDevelopmentRegion</key>
+	<string>en</string>
+	<key>CFBundleLocalizations</key>
+	<array>
+		<string>en</string>
+		<string>id</string>
+	</array>
+	<key>LSMinimumSystemVersion</key>
+	<string>26.0</string>
+	<key>LSApplicationCategoryType</key>
+	<string>public.app-category.productivity</string>
+	<key>NSHighResolutionCapable</key>
+	<true/>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>Miiting records your voice from the microphone to transcribe your meetings. Audio is processed on this Mac.</string>
+	<key>NSAudioCaptureUsageDescription</key>
+	<string>Miiting records system audio (the other participants in Zoom, Google Meet and other apps) to transcribe your meetings. No bot joins the call.</string>
+	<key>CFBundleURLTypes</key>
+	<array>
+		<dict>
+			<key>CFBundleURLName</key>
+			<string>app.miiting.mac</string>
+			<key>CFBundleURLSchemes</key>
+			<array>
+				<string>miiting</string>
+			</array>
+		</dict>
+	</array>
+	<key>NSHumanReadableCopyright</key>
+	<string>Miiting contributors · MIT License</string>
+</dict>
+</plist>

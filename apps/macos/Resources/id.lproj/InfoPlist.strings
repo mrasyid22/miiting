@@ -1,0 +1,4 @@
+/* Permission prompts shown by macOS, in Indonesian. */
+
+"NSMicrophoneUsageDescription" = "Miiting merekam suara kamu dari mikrofon untuk membuat transkrip rapat. Audio diproses di Mac ini.";
+"NSAudioCaptureUsageDescription" = "Miiting merekam audio sistem (suara peserta rapat dari Zoom, Google Meet, dan aplikasi lain) untuk membuat transkrip. Tidak ada bot yang ikut rapat.";

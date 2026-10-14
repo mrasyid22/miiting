@@ -1,0 +1,15 @@
+[package]
+name = "miiting-ffi"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+
+[lib]
+crate-type = ["staticlib", "cdylib", "lib"]
+name = "miiting_ffi"
+
+[dependencies]
+miiting-core = { path = "../miiting-core" }
+uniffi.workspace = true
+log.workspace = true
+thiserror.workspace = true
