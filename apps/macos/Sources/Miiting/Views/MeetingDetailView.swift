@@ -18,6 +18,7 @@ struct MeetingDetailView: View {
     @State private var editing = false
     @State private var draft = ""
     @State private var confirmDelete = false
+    @State private var confirmRetranscribe = false
     @FocusState private var titleFocused: Bool
 
     private var meeting: MeetingItem { detail.meeting }
@@ -57,6 +58,12 @@ struct MeetingDetailView: View {
         } message: {
             Text("The transcript, notes and audio files will be permanently deleted from this Mac.")
         }
+        .confirmationDialog("Re-transcribe in \(AppSettings.meetingLanguageName(meeting.language))?", isPresented: $confirmRetranscribe, titleVisibility: .visible) {
+            Button("Re-transcribe") { Task { await model.retranscribe(meeting.id) } }
+            Button("Not now", role: .cancel) {}
+        } message: {
+            Text("The current transcript was made in the previous language. Re-transcribing replaces it.")
+        }
     }
 
     private func syncFromDetail() {
@@ -81,6 +88,19 @@ struct MeetingDetailView: View {
                     .font(.callout)
                     .foregroundStyle(.secondary)
                 if meeting.durationMs > 0 { MetaPill(text: formatDuration(meeting.durationMs), systemImage: "clock") }
+                MeetingLanguageMenu(code: Binding(get: { meeting.language }, set: { code in
+                    guard code != meeting.language else { return }
+                    model.setLanguage(meeting.id, to: code)
+                    if !detail.audioFiles.isEmpty { confirmRetranscribe = true }
+                })) {
+                    MetaPill(text: AppSettings.meetingLanguageName(meeting.language), systemImage: "globe")
+                }
+                .menuStyle(.button)
+                .buttonStyle(.plain)
+                .menuIndicator(.hidden)
+                .fixedSize()
+                .disabled(job != nil)
+                .help("Language spoken in this meeting. Change it, then re-transcribe.")
                 if let engine = meeting.sttEngine {
                     MetaPill(text: engine, systemImage: "waveform")
                         .help(detail.shownPass == .final ? String(localized: "Final transcript") : String(localized: "Live transcript draft"))

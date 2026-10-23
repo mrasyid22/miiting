@@ -46,7 +46,7 @@ private struct GeneralSettings: View {
                     ForEach(AppSettings.meetingLanguages, id: \.code) { Text(verbatim: $0.name).tag($0.code) }
                 }
             } footer: {
-                Text("The language is fixed so Whisper doesn't drift into another language mid-meeting. English terms are still written as spoken. Notes are written in this language (Indonesian for regional languages).")
+                Text("You can also pick the language next to the Record button before each meeting. It is fixed during the meeting so Whisper doesn't drift into another language. English terms are still written as spoken. Notes are written in this language (Indonesian for regional languages).")
             }
             Section("After each meeting") {
                 Toggle("Re-transcribe with the accurate model", isOn: $s.finalPassEnabled)
@@ -362,6 +362,9 @@ private struct SummarySettings: View {
                           systemImage: "exclamationmark.icloud")
                 }
             }
+            if s.llmPreset == .ollama {
+                OllamaSection()
+            }
             if s.llmPreset == .ollama, let rec = model.recommendation {
                 Section {
                     ForEach(rec.localLlms, id: \.tag) { l in
@@ -370,6 +373,11 @@ private struct SummarySettings: View {
                                 HStack(spacing: 6) {
                                     Text(l.name).font(.body.weight(.medium))
                                     FitBadge(fit: l.fit)
+                                    if model.ollamaStatus?.models.contains(l.tag) == true {
+                                        Label("Downloaded", systemImage: "checkmark.circle.fill")
+                                            .font(.caption2.weight(.semibold))
+                                            .foregroundStyle(.green)
+                                    }
                                     if l.recommended {
                                         Label("Recommended", systemImage: "sparkles")
                                             .font(.caption2.weight(.semibold))
@@ -391,11 +399,6 @@ private struct SummarySettings: View {
                     }
                 } header: {
                     Text("Local models for your \(rec.device.chip) · \(rec.device.ramLabel)")
-                } footer: {
-                    HStack(spacing: 6) {
-                        Text("Install from Terminal:")
-                        Text(verbatim: "ollama pull \(s.llmModel)").font(.caption.monospaced()).textSelection(.enabled)
-                    }
                 }
             }
             Section {
@@ -410,6 +413,79 @@ private struct SummarySettings: View {
         }
         .formStyle(.grouped)
         .onAppear { apiKey = Keychain.get(model.settings.llmPreset.keychainAccount) ?? "" }
+    }
+}
+
+/// Whether Ollama is installed and running, and whether the chosen model is downloaded.
+private struct OllamaSection: View {
+    @Environment(AppModel.self) private var model
+    @State private var starting = false
+    @State private var startError: String?
+
+    var body: some View {
+        let s = model.settings
+        let status = model.ollamaStatus
+        let tag = s.llmModel.trimmingCharacters(in: .whitespaces)
+        Section {
+            LabeledContent("Ollama") {
+                if status?.running == true {
+                    Label("Running", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                } else if starting {
+                    HStack(spacing: 6) {
+                        ProgressView().controlSize(.small)
+                        Text("Starting…").foregroundStyle(.secondary)
+                    }
+                } else if !model.ollamaInstalled {
+                    HStack(spacing: 8) {
+                        Text("Not installed").foregroundStyle(.secondary)
+                        Button("Download Ollama") { NSWorkspace.shared.open(OllamaLauncher.downloadURL) }
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        Text("Not running").foregroundStyle(.secondary)
+                        Button("Start") {
+                            starting = true
+                            Task {
+                                startError = await model.startOllama()
+                                starting = false
+                            }
+                        }
+                    }
+                }
+            }
+            if let startError {
+                Text(startError).font(.caption).foregroundStyle(.red)
+            }
+            if !tag.isEmpty {
+                LabeledContent {
+                    if let d = model.downloads[AppModel.ollamaDownloadKey(tag)] {
+                        HStack(spacing: 8) {
+                            ProgressView(value: d.fraction).frame(width: 120)
+                            Text(d.message).font(.caption).monospacedDigit().foregroundStyle(.secondary)
+                            Button {
+                                d.cancel.cancel()
+                            } label: {
+                                Image(systemName: "xmark.circle.fill")
+                            }
+                            .buttonStyle(.borderless)
+                            .help("Cancel download")
+                        }
+                    } else if status?.modelInstalled == true {
+                        Label("Downloaded", systemImage: "checkmark.circle.fill").foregroundStyle(.green)
+                    } else {
+                        Button("Download") { model.downloadOllamaModel(tag) }
+                            .disabled(!model.ollamaInstalled)
+                    }
+                } label: {
+                    Text(verbatim: tag)
+                }
+            }
+        } header: {
+            Text("Ollama")
+        } footer: {
+            Text("Miiting starts Ollama and downloads the model by itself when it writes notes. No Terminal needed.")
+        }
+        .task(id: "\(s.llmBaseURL)|\(tag)") { await model.refreshOllama() }
     }
 }
 

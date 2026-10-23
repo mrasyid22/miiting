@@ -5,6 +5,7 @@ struct EmptyStateView: View {
     @Environment(AppModel.self) private var model
 
     var body: some View {
+        @Bindable var settings = model.settings
         VStack(spacing: 22) {
             ZStack {
                 Circle()
@@ -44,6 +45,14 @@ struct EmptyStateView: View {
                 .controlSize(.extraLarge)
                 .disabled(model.engine == nil)
             }
+
+            MeetingLanguageMenu(code: $settings.language) {
+                Label("Meeting language: \(AppSettings.meetingLanguageName(settings.language))", systemImage: "globe")
+            }
+            .menuStyle(.button)
+            .buttonStyle(.borderless)
+            .fixedSize()
+            .help("Language spoken in the next meeting. Change it before you start recording.")
 
             if model.engine != nil && !model.hasLiveModel && !model.hasFinalModel {
                 ModelSetupCard()

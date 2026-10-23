@@ -42,6 +42,7 @@ struct LiveMeetingView: View {
                 .font(.system(size: 28, weight: .bold))
             HStack(spacing: 8) {
                 statusLabel(r)
+                MetaPill(text: AppSettings.meetingLanguageName(r.language), systemImage: "globe")
                 if !r.capturingSystemAudio {
                     MetaPill(text: String(localized: "Microphone only"), systemImage: "mic")
                 }

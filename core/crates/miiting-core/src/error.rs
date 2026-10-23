@@ -71,8 +71,8 @@ impl Error {
             ),
             Error::OllamaNotRunning => tr!(
                 lang,
-                "Ollama isn't running. Open Ollama (or run `ollama serve`) and try again.",
-                "Ollama tidak berjalan. Buka Ollama (atau jalankan `ollama serve`) lalu coba lagi."
+                "Couldn't reach Ollama. Check that it's installed (ollama.com), or choose another provider in Settings › Notes.",
+                "Ollama tidak bisa dihubungi. Pastikan Ollama sudah terpasang (ollama.com), atau pilih penyedia lain di Pengaturan › Notulen."
             ),
             Error::Refused => tr!(
                 lang,

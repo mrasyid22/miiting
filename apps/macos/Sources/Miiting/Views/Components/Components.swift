@@ -119,6 +119,23 @@ struct PrivacyBadge: View {
     }
 }
 
+/// The language spoken in a meeting, as a menu. Next to the Record button it sets the next meeting's language.
+struct MeetingLanguageMenu<Label: View>: View {
+    @Binding var code: String
+    @ViewBuilder var label: () -> Label
+
+    var body: some View {
+        Menu {
+            Picker("Meeting language", selection: $code) {
+                ForEach(AppSettings.meetingLanguages, id: \.code) { Text(verbatim: $0.name).tag($0.code) }
+            }
+            .pickerStyle(.inline)
+        } label: {
+            label()
+        }
+    }
+}
+
 struct MetaPill: View {
     let text: String
     var systemImage: String?

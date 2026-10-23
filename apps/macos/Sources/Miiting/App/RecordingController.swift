@@ -38,6 +38,8 @@ final class RecordingController {
     private(set) var capturingSystemAudio = false
     private(set) var heardSystemAudio = false
     private(set) var liveTranscription = true
+    /// Language spoken in the meeting being recorded.
+    private(set) var language = "id"
 
     @ObservationIgnored var onError: ((String) -> Void)?
     @ObservationIgnored private var session: RecordingSession?
@@ -76,6 +78,7 @@ final class RecordingController {
             Task { @MainActor in self?.handle(event) }
         }
         let language = settings.language
+        self.language = language
         let glossary = settings.glossaryOrNil
         let session = try await Task.detached {
             try engine.startSession(title: nil, language: language, glossary: glossary, liveStt: live, listener: listener)

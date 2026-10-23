@@ -7,6 +7,7 @@ use miiting_core::device::{self, DeviceProfile, Fit, LOCAL_LLMS, Tier};
 use miiting_core::engine::{Engine, FinalPassOptions, StartOptions, SummaryOptions};
 use miiting_core::llm::{LlmClient, LlmConfig};
 use miiting_core::models::{self, ModelKind, ModelRole};
+use miiting_core::ollama;
 use miiting_core::prompts::TEMPLATES;
 use miiting_core::session::{Session, SessionEvents, SessionStatus};
 use miiting_core::stt::RunControl;
@@ -133,6 +134,8 @@ pub struct MeetingItem {
     pub stt_engine: Option<String>,
     /// Hosts that received this meeting's data. Empty = never left the Mac.
     pub egress: Vec<String>,
+    /// Spoken language (Whisper code, e.g. "id").
+    pub language: String,
 }
 
 impl From<&core::Meeting> for MeetingItem {
@@ -147,6 +150,7 @@ impl From<&core::Meeting> for MeetingItem {
             transcript_pass: m.transcript_pass.into(),
             stt_engine: m.stt_engine.clone(),
             egress: m.egress.clone(),
+            language: m.language.clone(),
         }
     }
 }
@@ -291,6 +295,15 @@ pub struct LocalLlmEntry {
     pub note: String,
     pub fit: ModelFit,
     pub recommended: bool,
+}
+
+#[derive(Debug, Clone, uniffi::Record)]
+pub struct OllamaStatus {
+    pub running: bool,
+    /// Whether the model asked about is downloaded.
+    pub model_installed: bool,
+    /// Downloaded models, as `name:tag` (`latest` when the tag is omitted).
+    pub models: Vec<String>,
 }
 
 #[derive(Debug, Clone, uniffi::Record)]
@@ -525,6 +538,11 @@ impl MiitingEngine {
         })
     }
 
+    /// The language spoken in the meeting; the next transcription pass and the notes use it.
+    pub fn set_meeting_language(&self, meeting_id: String, language: String) -> R<()> {
+        self.ok(self.inner.store().set_language(&meeting_id, language.trim()))
+    }
+
     pub fn rename_meeting(&self, meeting_id: String, title: String) -> R<()> {
         self.ok(self.inner.store().rename(&meeting_id, title.trim()))
     }
@@ -634,6 +652,27 @@ impl MiitingEngine {
     pub fn test_llm(&self, llm: LlmSettings) -> R<String> {
         let client = LlmClient::new(llm.into());
         self.ok(client.complete("Answer as briefly as possible.", "Reply with just the word: ready"))
+    }
+
+    /// Whether the Ollama server at `base_url` is up and has `model`. Returns quickly when it is down.
+    pub fn ollama_status(&self, base_url: String, model: String) -> OllamaStatus {
+        let s = ollama::status(&base_url);
+        OllamaStatus { running: s.running, model_installed: s.has(&model), models: s.models }
+    }
+
+    /// Downloads an Ollama model through the running server.
+    pub fn ollama_pull(
+        &self,
+        base_url: String,
+        model: String,
+        progress: Arc<dyn ProgressListener>,
+        cancel: Arc<CancelToken>,
+    ) -> R<()> {
+        let report = |done: u64, total: u64| {
+            let f = if total > 0 { done as f32 / total as f32 } else { 0.0 };
+            progress.on_progress(f, format!("{} / {} MB", done / 1_048_576, total / 1_048_576));
+        };
+        self.ok(ollama::pull(&base_url, &model, &report, &cancel.flag))
     }
 
     // Models & templates

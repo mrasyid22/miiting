@@ -31,9 +31,16 @@ struct DownloadProgress: Equatable {
 
 struct Toast: Identifiable, Equatable {
     enum Kind { case info, success, error }
+    struct Action {
+        let title: String
+        let perform: @MainActor () -> Void
+    }
     let id = UUID()
     let kind: Kind
     let message: String
+    var action: Action?
+
+    static func == (a: Toast, b: Toast) -> Bool { a.id == b.id }
 }
 
 @MainActor
@@ -52,6 +59,8 @@ final class AppModel {
     private(set) var downloads: [String: DownloadProgress] = [:]
     private(set) var jobs: [String: JobProgress] = [:]
     private(set) var toast: Toast?
+    /// Last known state of the local Ollama server, when Ollama is the notes provider.
+    private(set) var ollamaStatus: OllamaStatus?
 
     var selection: String? {
         didSet { if oldValue != selection { loadDetail() } }
@@ -94,6 +103,7 @@ final class AppModel {
         reloadMeetings()
         if !settings.onboardingDone && !DevHooks.skipOnboarding { showOnboarding = true }
         if let id = DevHooks.selectMeeting { selection = id }
+        if let id = DevHooks.summarizeMeeting { await summarize(id, templateId: settings.defaultTemplate) }
     }
 
     var installedModelIds: Set<String> { Set(models.filter(\.installed).map(\.id)) }
@@ -225,11 +235,16 @@ final class AppModel {
         reloadMeetings()
     }
 
-    /// `miiting://record/start|stop|toggle|pause` and `miiting://meeting/<id>[/retranscribe|/summarize]`, for Shortcuts,
-    /// Raycast, Stream Deck and scripted tests.
+    /// `miiting://record/start|stop|toggle|pause[?language=en]` and `miiting://meeting/<id>[/retranscribe|/summarize]`,
+    /// for Shortcuts, Raycast, Stream Deck and scripted tests.
     func handle(_ url: URL) async {
         guard url.scheme == "miiting" else { return }
         let action = url.pathComponents.dropFirst().first ?? ""
+        if url.host == "record",
+           let code = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?.first(where: { $0.name == "language" })?.value,
+           AppSettings.meetingLanguages.contains(where: { $0.code == code }) {
+            settings.language = code
+        }
         switch (url.host, action) {
         case ("record", "start"): if !recorder.isActive { await startRecording() }
         case ("record", "stop"): if recorder.isRecording { await stopRecording() }
@@ -276,9 +291,9 @@ final class AppModel {
                 self.jobs[id]?.message = String(localized: "Re-transcribing with the accurate model… \(percent)")
             }
         }
-        let language = settings.language
+        let language = meeting(id)?.language ?? settings.language
         let glossary = settings.glossaryOrNil
-        AppLog.info("final pass start \(id) \(stt.logDescription)")
+        AppLog.info("final pass start \(id) \(stt.logDescription) language=\(language)")
         let started = Date()
         do {
             let n = try await Task.detached(priority: .userInitiated) {
@@ -303,6 +318,13 @@ final class AppModel {
             return
         }
         jobs[id] = JobProgress(stage: .summary, fraction: 0, message: String(localized: "Writing notes…"), cancel: nil)
+        if usesOllama {
+            guard await prepareOllama(for: id) else {
+                jobs[id] = nil
+                return
+            }
+            jobs[id] = JobProgress(stage: .summary, fraction: 0, message: String(localized: "Writing notes…"), cancel: nil)
+        }
         let relay = ProgressRelay { [weak self] f, message in
             Task { @MainActor in
                 guard let self, self.jobs[id]?.stage == .summary else { return }
@@ -438,6 +460,12 @@ final class AppModel {
     func testLlm() async -> Result<String, AppError> {
         guard let engine else { return .failure(AppError(String(localized: "The engine isn't ready yet."))) }
         guard let llm = settings.llm() else { return .failure(AppError(String(localized: "Fill in the model name and API key first."))) }
+        if usesOllama {
+            if let problem = await startOllama() { return .failure(AppError(problem)) }
+            if !(await refreshOllama()).modelInstalled {
+                return .failure(AppError(String(localized: "\(settings.llmModel) isn't downloaded yet. Download it here, or Miiting downloads it the first time it writes notes.")))
+            }
+        }
         do {
             let reply = try await Task.detached { try engine.testLlm(llm: llm) }.value
             return .success(reply)
@@ -446,14 +474,140 @@ final class AppModel {
         }
     }
 
+    // MARK: Meeting language
+
+    /// Changes the language of a recorded meeting; the next re-transcription and notes use it.
+    func setLanguage(_ id: String, to code: String) {
+        do {
+            try engine?.setMeetingLanguage(meetingId: id, language: code)
+        } catch {
+            show(userMessage(error), .error)
+        }
+        reloadMeetings()
+        loadDetail()
+    }
+
+    // MARK: Ollama
+
+    var usesOllama: Bool { settings.llmPreset == .ollama }
+    var ollamaInstalled: Bool { OllamaLauncher.installation() != nil }
+
+    static func ollamaDownloadKey(_ tag: String) -> String { "ollama:\(tag)" }
+
+    @discardableResult
+    func refreshOllama() async -> OllamaStatus {
+        guard let engine, usesOllama else { return OllamaStatus(running: false, modelInstalled: false, models: []) }
+        let base = settings.llmBaseURL
+        let tag = settings.llmModel
+        let status = await Task.detached { engine.ollamaStatus(baseUrl: base, model: tag) }.value
+        ollamaStatus = status
+        return status
+    }
+
+    /// Starts Ollama if it isn't running and waits for it. Returns a message to show when that fails.
+    func startOllama() async -> String? {
+        if await refreshOllama().running { return nil }
+        let launcher = OllamaLauncher.shared
+        do {
+            guard try await launcher.launch(baseURL: settings.llmBaseURL) else {
+                return String(localized: "Ollama isn't installed. Install it for free from ollama.com, or choose another provider in Settings › Notes.")
+            }
+        } catch {
+            AppLog.error("ollama launch failed: \(error.localizedDescription)")
+            return String(localized: "Miiting couldn't start Ollama. Open the Ollama app, then try again.")
+        }
+        AppLog.info("ollama starting")
+        // The first start can take a while on a busy Mac.
+        for _ in 0..<60 {
+            try? await Task.sleep(for: .milliseconds(500))
+            if await refreshOllama().running {
+                AppLog.info("ollama ready")
+                return nil
+            }
+            if launcher.launchFailed { break }
+        }
+        return String(localized: "Miiting couldn't start Ollama. Open the Ollama app, then try again.")
+    }
+
+    /// Runs Ollama and downloads the notes model if needed, reporting progress in the meeting's job.
+    private func prepareOllama(for id: String) async -> Bool {
+        jobs[id]?.message = String(localized: "Starting Ollama…")
+        if let problem = await startOllama() {
+            let download = Toast.Action(title: String(localized: "Download Ollama")) {
+                NSWorkspace.shared.open(OllamaLauncher.downloadURL)
+            }
+            show(problem, .error, action: ollamaInstalled ? nil : download)
+            return false
+        }
+        guard !(ollamaStatus?.modelInstalled ?? false) else { return true }
+        let tag = settings.llmModel
+        let cancel = CancelToken()
+        jobs[id]?.cancel = cancel
+        jobs[id]?.message = String(localized: "Downloading \(tag) for notes…")
+        do {
+            try await pullOllamaModel(tag, cancel: cancel) { [weak self] f, _ in
+                guard let self, self.jobs[id]?.stage == .summary else { return }
+                let percent = Double(f).formatted(.percent.precision(.fractionLength(0)).locale(appLocale))
+                self.jobs[id]?.fraction = f
+                self.jobs[id]?.message = String(localized: "Downloading \(tag) for notes… \(percent)")
+            }
+            jobs[id]?.cancel = nil
+            return true
+        } catch {
+            if case MiitingError.Cancelled = error {} else { show(userMessage(error), .error) }
+            return false
+        }
+    }
+
+    /// Downloads the notes model from Settings, starting Ollama first if needed.
+    func downloadOllamaModel(_ tag: String) {
+        let key = Self.ollamaDownloadKey(tag)
+        guard downloads[key] == nil else { return }
+        let cancel = CancelToken()
+        downloads[key] = DownloadProgress(fraction: 0, message: String(localized: "Starting…"), cancel: cancel)
+        Task {
+            defer { downloads[key] = nil }
+            if let problem = await startOllama() {
+                show(problem, .error)
+                return
+            }
+            do {
+                try await pullOllamaModel(tag, cancel: cancel) { [weak self] f, message in
+                    guard let self, self.downloads[key] != nil else { return }
+                    self.downloads[key]?.fraction = f
+                    self.downloads[key]?.message = message
+                }
+                show(String(localized: "\(tag) is ready"), .success)
+            } catch {
+                if case MiitingError.Cancelled = error {} else { show(userMessage(error), .error) }
+            }
+            await refreshOllama()
+        }
+    }
+
+    private func pullOllamaModel(_ tag: String, cancel: CancelToken,
+                                 progress: @escaping @MainActor (Float, String) -> Void) async throws {
+        guard let engine else { return }
+        let base = settings.llmBaseURL
+        let relay = ProgressRelay { f, message in
+            Task { @MainActor in progress(f, message) }
+        }
+        AppLog.info("ollama pull start \(tag)")
+        try await Task.detached(priority: .utility) {
+            try engine.ollamaPull(baseUrl: base, model: tag, progress: relay, cancel: cancel)
+        }.value
+        AppLog.info("ollama pull done \(tag)")
+        await refreshOllama()
+    }
+
     // MARK: Toasts
 
-    func show(_ message: String, _ kind: Toast.Kind = .info) {
+    func show(_ message: String, _ kind: Toast.Kind = .info, action: Toast.Action? = nil) {
         if kind == .error { AppLog.error(message) }
-        toast = Toast(kind: kind, message: message)
+        toast = Toast(kind: kind, message: message, action: action)
         toastTask?.cancel()
         toastTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(kind == .error ? 7 : 4))
+            try? await Task.sleep(for: .seconds(action != nil ? 12 : kind == .error ? 7 : 4))
             guard !Task.isCancelled else { return }
             self?.toast = nil
         }

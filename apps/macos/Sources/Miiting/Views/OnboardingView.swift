@@ -1,3 +1,4 @@
+import AppKit
 import AVFoundation
 import SwiftUI
 
@@ -134,13 +135,16 @@ struct OnboardingView: View {
                     ForEach(LlmPreset.allCases) { Text($0.label).tag($0) }
                 }
                 if settings.llmPreset == .ollama {
-                    Text("Install Ollama from ollama.com, then run this in Terminal:")
-                        .font(.callout).foregroundStyle(.secondary)
-                    Text(verbatim: "ollama pull \(settings.llmModel.isEmpty ? (model.recommendation?.llmTag ?? "gemma3:4b") : settings.llmModel)")
-                        .font(.callout.monospaced())
-                        .textSelection(.enabled)
-                        .padding(8)
-                        .background(.quaternary.opacity(0.5), in: RoundedRectangle(cornerRadius: 8))
+                    let tag = settings.llmModel.isEmpty ? (model.recommendation?.llmTag ?? "gemma3:4b") : settings.llmModel
+                    if model.ollamaInstalled {
+                        Label("Ollama is installed. Miiting starts it and downloads \(tag) the first time it writes notes.",
+                              systemImage: "checkmark.circle")
+                            .font(.callout).foregroundStyle(.secondary)
+                    } else {
+                        Text("Ollama runs the notes model on your Mac. Install it for free; Miiting then starts it and downloads \(tag) for you.")
+                            .font(.callout).foregroundStyle(.secondary)
+                        Button("Download Ollama") { NSWorkspace.shared.open(OllamaLauncher.downloadURL) }
+                    }
                 } else if settings.llmPreset.needsKey {
                     Text("Add your API key in Settings › Notes. The transcript is sent to \(URL(string: settings.llmBaseURL)?.host ?? String(localized: "the provider")) when notes are written.")
                         .font(.callout).foregroundStyle(.secondary)

@@ -161,6 +161,12 @@ impl Store {
         Ok(())
     }
 
+    /// The spoken language, used by later transcription passes and for the notes.
+    pub fn set_language(&self, id: &str, language: &str) -> Result<()> {
+        self.conn.lock().execute("UPDATE meetings SET language = ?2 WHERE id = ?1", params![id, language])?;
+        Ok(())
+    }
+
     /// Set a model-suggested title, but only if the user hasn't named the meeting.
     pub fn set_auto_title(&self, id: &str, title: &str) -> Result<()> {
         self.conn

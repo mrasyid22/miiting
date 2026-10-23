@@ -17,7 +17,7 @@ Until releases are notarized, macOS blocks the app on first launch: open System 
 - **No bot.** Other participants are captured with a Core Audio process tap (macOS 14.2+). No BlackHole or virtual driver, and no extra attendee in the call.
 - **Two channels, two speakers.** Your microphone is labelled *Me* and system audio *Them*, without diarization. Echo of the other participants picked up by your microphone is removed.
 - **Live draft, then an accurate final transcript.** Whisper Large v3 Turbo transcribes live; after the meeting the whole recording is transcribed again with Large v3 (beam search + Silero VAD) and replaces the draft.
-- **Tuned for Indonesian.** The language is pinned, Whisper's typical hallucinations ("Terima kasih telah menonton", subtitle credits, repetition loops) are filtered, a glossary helps with names and jargon, and the notes templates exist in Indonesian and English.
+- **Tuned for Indonesian.** The meeting language is picked next to the Record button (Indonesian, English, Javanese, Sundanese or Malay) and pinned for the meeting, Whisper's typical hallucinations ("Terima kasih telah menonton", subtitle credits, repetition loops) are filtered, a glossary helps with names and jargon, and the notes templates exist in Indonesian and English.
 - **Fits your Mac.** Miiting reads your chip, RAM and free disk space and recommends the models, beam size and local LLM that fit — from an 8 GB MacBook Air to a 64 GB MacBook Pro.
 - **Bring your own provider.**
   - Speech-to-text: local Whisper, or any server that speaks OpenAI's `/audio/transcriptions` (Groq, OpenAI, speaches, LocalAI).
@@ -41,7 +41,7 @@ The reasoning behind these choices is in [docs/decisions/0001-architecture.md](d
 
 ## Build
 
-Requirements: an Apple Silicon Mac on macOS 26 or later, Rust (`brew install rustup && rustup default stable`), `cmake`, and Swift 6.2 (the Command Line Tools are enough; Xcode is optional).
+Requirements: an Apple Silicon Mac on macOS 26 or later, Rust (`brew install rustup && rustup default stable`), `cmake`, and Swift 6.2 (the Command Line Tools are enough; Xcode is optional). With Command Line Tools 27 or later and no Xcode, `scripts/build-app.sh` builds against the macOS 26 SDK, because the SwiftUI macro plugin of newer SDKs ships only with Xcode.
 
 ```bash
 make app        # builds build/Miiting.app
@@ -83,11 +83,7 @@ make e2e               # synthetic two-speaker meeting → live → final → no
 
 ## Local notes with Ollama
 
-```bash
-brew install ollama
-brew services start ollama      # start at login
-ollama pull gemma3:12b          # or the model Settings › Notes suggests for your Mac
-```
+Install Ollama from [ollama.com](https://ollama.com/download) (or `brew install ollama`). That's all: when Miiting writes notes it starts Ollama if it isn't running and downloads the model it needs, with progress in the meeting. Settings › Notes shows whether Ollama is running and lets you download models ahead of time. A server Miiting started is stopped when Miiting quits.
 
 Miiting calls Ollama's native `/api/chat` so it can raise the context window; Ollama's default (2–4k tokens) would silently cut long transcripts.
 
@@ -95,6 +91,7 @@ Miiting calls Ollama's native `/api/chat` so it can raise the context window; Ol
 
 ```bash
 open "miiting://record/start"                 # also: stop, toggle, pause
+open "miiting://record/start?language=en"     # pick the meeting language
 open "miiting://meeting/<id>/retranscribe"    # or /summarize
 ```
 

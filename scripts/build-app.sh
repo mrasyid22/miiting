@@ -17,6 +17,15 @@ if [[ "${1:-}" != "--skip-core" ]]; then
   "$ROOT/scripts/build-core.sh"
 fi
 
+# From the macOS 27 SDK on, SwiftUI's property wrappers are macros whose plugin ships with Xcode but not
+# with the Command Line Tools. Without Xcode, build against the macOS 26 SDK (the app targets macOS 26).
+DEV_DIR="$(xcode-select -p)"
+if [[ -z "${SDKROOT:-}" && -d "$DEV_DIR/SDKs/MacOSX26.sdk" \
+      && ! -e "$DEV_DIR/usr/lib/swift/host/plugins/libSwiftUIMacros.dylib" ]]; then
+  export SDKROOT="$DEV_DIR/SDKs/MacOSX26.sdk"
+  echo "› using the macOS 26 SDK (the Command Line Tools have no SwiftUI macro plugin)"
+fi
+
 echo "› swift build ($CONFIG)"
 swift build --package-path "$APP_SRC" -c "$CONFIG"
 BIN="$(swift build --package-path "$APP_SRC" -c "$CONFIG" --show-bin-path)/Miiting"

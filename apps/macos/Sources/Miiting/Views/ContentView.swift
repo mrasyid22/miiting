@@ -5,6 +5,7 @@ struct ContentView: View {
 
     var body: some View {
         @Bindable var model = model
+        @Bindable var settings = model.settings
         NavigationSplitView {
             SidebarView()
                 .navigationSplitViewColumnWidth(min: 240, ideal: 290, max: 380)
@@ -13,6 +14,15 @@ struct ContentView: View {
         }
         .searchable(text: $model.searchText, placement: .sidebar, prompt: "Search titles, transcripts and notes")
         .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                if !model.recorder.isActive {
+                    MeetingLanguageMenu(code: $settings.language) {
+                        Label(AppSettings.meetingLanguageName(settings.language), systemImage: "globe")
+                            .labelStyle(.titleAndIcon)
+                    }
+                    .help("Language spoken in the next meeting")
+                }
+            }
             ToolbarItem(placement: .primaryAction) {
                 RecordToolbarButton()
             }
@@ -119,6 +129,14 @@ private struct ToastView: View {
                 Text(toast.message)
                     .font(.callout)
                     .fixedSize(horizontal: false, vertical: true)
+                if let action = toast.action {
+                    Button(action.title) {
+                        action.perform()
+                        model.dismissToast()
+                    }
+                    .buttonStyle(.glassProminent)
+                    .controlSize(.small)
+                }
                 Button {
                     model.dismissToast()
                 } label: {

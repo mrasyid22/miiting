@@ -49,6 +49,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         return .terminateLater
     }
+
+    @MainActor
+    func applicationWillTerminate(_ notification: Notification) {
+        OllamaLauncher.shared.stopOwnedServer()
+    }
 }
 
 struct MiitingCommands: Commands {
@@ -89,8 +94,12 @@ struct MenuBarContent: View {
             Button(r.state == .paused ? String(localized: "Resume") : String(localized: "Pause")) { r.togglePause() }
             Button("Stop") { Task { await model.stopRecording() } }
         } else {
+            @Bindable var settings = model.settings
             Button("Start Recording") { Task { await model.startRecording() } }
                 .disabled(model.engine == nil || r.isActive)
+            Picker("Meeting Language", selection: $settings.language) {
+                ForEach(AppSettings.meetingLanguages, id: \.code) { Text(verbatim: $0.name).tag($0.code) }
+            }
         }
         Divider()
         Button("Open Miiting") {

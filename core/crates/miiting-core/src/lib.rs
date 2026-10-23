@@ -15,6 +15,7 @@ pub mod i18n;
 pub mod llm;
 pub mod merge;
 pub mod models;
+pub mod ollama;
 pub mod prompts;
 pub mod session;
 pub mod store;

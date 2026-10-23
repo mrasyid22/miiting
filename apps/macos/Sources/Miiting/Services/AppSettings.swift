@@ -168,6 +168,10 @@ final class AppSettings {
         ("ms", "Bahasa Melayu"),
     ]
 
+    static func meetingLanguageName(_ code: String) -> String {
+        meetingLanguages.first { $0.code == code }?.name ?? code
+    }
+
     /// The language the interface is actually shown in ("en" or "id").
     static var interfaceLanguageCode: String { Bundle.main.preferredLocalizations.first ?? "en" }
 
